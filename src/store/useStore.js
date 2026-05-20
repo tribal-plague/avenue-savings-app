@@ -133,13 +133,24 @@ const useStore = create((set, get) => ({
 
       if (groupIds.length === 0) {
         if (_depth > 0) {
-          // Already ran setup once and still no groups — stop to avoid infinite loop
-          set({ isLoading: false, appView: 'landing' })
+          // Setup ran but still no groups — go to app in empty state rather than kicking user out
+          console.error('[avenue] No groups after setup. Check Supabase RLS policies on group_members.')
+          set({
+            currentUserId: userId,
+            users: { [userId]: profile ? mapProfile(profile) : {} },
+            isLoading: false,
+            isAuthenticated: true,
+            appView: 'app',
+            activeGroupId: null,
+          })
           return
         }
-        // First login after email confirmation — run account setup now
+        // First login — run account setup
         const name = profile?.name || 'User'
-        await get()._setupNewUser(userId, name)
+        const ok = await get()._setupNewUser(userId, name)
+        if (!ok) {
+          console.error('[avenue] _setupNewUser failed. Check Supabase RLS policies on groups table.')
+        }
         await get().loadUserData(userId, 1)
         return
       }
@@ -231,22 +242,37 @@ const useStore = create((set, get) => ({
 
   // Internal: creates default group + categories for a new user
   _setupNewUser: async (userId, name) => {
-    await supabase.from('profiles').upsert({
+    const { error: profileErr } = await supabase.from('profiles').upsert({
       id: userId, name, salary: 0, savings_goal: 20,
       avatar_color: '#7c3aed', currency_symbol: '$',
     }, { onConflict: 'id' })
+    if (profileErr) console.error('[avenue] profile upsert failed:', profileErr.message)
 
-    const { data: group } = await supabase
+    // Check if a group already exists (avoid duplicates on retry)
+    const { data: existing } = await supabase
+      .from('group_members').select('group_id').eq('user_id', userId).limit(1)
+    if (existing && existing.length > 0) return true
+
+    const { data: group, error: groupErr } = await supabase
       .from('groups')
       .insert({ name: `${name.split(' ')[0]}'s Finances`, type: 'individual', invite_code: genCode(), created_by: userId })
       .select().single()
 
-    if (!group) return
+    if (groupErr || !group) {
+      console.error('[avenue] group creation failed:', groupErr?.message)
+      return false
+    }
 
-    await supabase.from('group_members').insert({ group_id: group.id, user_id: userId, is_admin: true })
-    await supabase.from('categories').insert(
+    const { error: memberErr } = await supabase
+      .from('group_members').insert({ group_id: group.id, user_id: userId, is_admin: true })
+    if (memberErr) console.error('[avenue] group_members insert failed:', memberErr.message)
+
+    const { error: catErr } = await supabase.from('categories').insert(
       DEFAULT_CATEGORIES.map(c => ({ ...c, group_id: group.id, created_by: userId }))
     )
+    if (catErr) console.error('[avenue] categories insert failed:', catErr.message)
+
+    return true
   },
 
   logout: async () => {
