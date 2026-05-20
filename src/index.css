@@ -2,21 +2,44 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Color tokens ─────────────────────────────────────────────── */
+:root {
+  --av-dark:    13 46 63;       /* #0D2E3F */
+  --av-muted:   113 113 122;    /* #71717A */
+  --av-border:  228 228 231;    /* #E4E4E7 */
+  --av-surface: 255 255 255;    /* #FFFFFF */
+  --av-light:   238 237 233;    /* #EEEDE9 */
+  --av-bg:      247 246 243;    /* #F7F6F3 — warm off-white */
+}
+
+.dark {
+  --av-dark:    255 255 255;    /* #FFFFFF — pure white text */
+  --av-muted:   170 170 175;    /* #AAAABF — readable gray */
+  --av-border:  40 40 40;       /* #282828 */
+  --av-surface: 16 16 16;       /* #101010 — near-black cards */
+  --av-light:   24 24 24;       /* #181818 */
+  --av-bg:      0 0 0;          /* #000000 — pure black */
+}
+
+/* ── Base ─────────────────────────────────────────────────────── */
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
   font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-  background-color: #ffffff;
-  color: #1A1A1A;
+  background-color: rgb(var(--av-bg));
+  color: rgb(var(--av-dark));
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
+/* ── Scrollbar ────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
-::-webkit-scrollbar-track { background: #ffffff; }
-::-webkit-scrollbar-thumb { background: #D4D4D8; border-radius: 2px; }
-::-webkit-scrollbar-thumb:hover { background: #0D2E3F; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgb(var(--av-border)); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: rgb(var(--av-muted)); }
 
+/* ── Animations ───────────────────────────────────────────────── */
 .animate-fade-in {
   animation: fadeIn 0.2s ease-out;
 }
@@ -25,13 +48,21 @@ body {
   to   { opacity: 1; transform: translateY(0); }
 }
 
+.animate-fade-up {
+  animation: fadeUp 0.5s ease-out both;
+}
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Form overrides ───────────────────────────────────────────── */
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; }
 
-input[type="range"] { accent-color: #0D2E3F; }
+input[type="range"] { accent-color: rgb(var(--av-dark)); }
 
-/* Refined focus ring */
 *:focus-visible {
-  outline: 2px solid #0D2E3F;
+  outline: 2px solid rgb(var(--av-dark) / 0.5);
   outline-offset: 2px;
 }

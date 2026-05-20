@@ -81,11 +81,25 @@ const useStore = create((set, get) => ({
   isAuthenticated: false,
   appView: 'landing',
   isLoading: true,
+  darkMode: false,
 
   // ── Navigation ──
   setPage: (page) => set({ currentPage: page }),
   setActiveGroup: (id) => set({ activeGroupId: id }),
   setAppView: (view) => set({ appView: view }),
+
+  // ── Dark mode ──
+  toggleDarkMode: () => {
+    const next = !get().darkMode
+    set({ darkMode: next })
+    document.documentElement.classList.toggle('dark', next)
+    localStorage.setItem('av-dark', next ? '1' : '0')
+  },
+  initDarkMode: () => {
+    const saved = localStorage.getItem('av-dark') === '1'
+    set({ darkMode: saved })
+    document.documentElement.classList.toggle('dark', saved)
+  },
 
   // ── Computed selectors (sync, operate on local state) ──
   getGroupCategories: (groupId) => get().categories.filter((c) => c.groupId === groupId),

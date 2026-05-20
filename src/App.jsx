@@ -29,6 +29,8 @@ export default function App() {
   const loadUserData = useStore((s) => s.loadUserData)
 
   useEffect(() => {
+    useStore.getState().initDarkMode()
+
     // Check for existing Supabase session on mount
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
@@ -55,7 +57,7 @@ export default function App() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'rgb(var(--av-bg))' }}>
         <div className="text-center">
           <div className="w-8 h-8 border-2 border-avenue-dark border-t-transparent rounded-full animate-spin mx-auto mb-3" />
           <p className="text-sm text-avenue-muted">Loading Avenue…</p>
@@ -69,7 +71,7 @@ export default function App() {
 
   const PageComponent = PAGES[currentPage] || Dashboard
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-avenue-bg">
       <TopNav />
       <main className="pb-12">
         <PageComponent />

@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { Plus, ChevronDown, LogOut, Settings, Users, PiggyBank, ShieldCheck } from 'lucide-react'
+import { Plus, ChevronDown, LogOut, Settings, Users, PiggyBank, ShieldCheck, Moon, Sun } from 'lucide-react'
 import useStore from '../../store/useStore'
 import { initials } from '../../utils/formatters'
 import Modal from '../ui/Modal'
 import { useCurrency } from '../../hooks/useCurrency'
+import Logo from '../Logo'
 
 const MAIN_TABS = [
   { id: 'dashboard',  label: 'Overview' },
@@ -28,6 +29,8 @@ export default function TopNav() {
   const setActiveGroup = useStore((s) => s.setActiveGroup)
   const logout         = useStore((s) => s.logout)
   const isGroupAdmin   = useStore((s) => s.isGroupAdmin)
+  const darkMode       = useStore((s) => s.darkMode)
+  const toggleDark     = useStore((s) => s.toggleDarkMode)
   const addExpense     = useStore((s) => s.addExpense)
   const categories     = useStore((s) => s.getGroupCategories(activeGroupId))
   const { symbol }     = useCurrency()
@@ -56,15 +59,13 @@ export default function TopNav() {
 
   return (
     <>
-      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-avenue-border">
+      <header className="sticky top-0 z-40 bg-avenue-bg/95 backdrop-blur-md border-b border-avenue-border">
         <div className="max-w-7xl mx-auto px-6 h-14 flex items-center gap-6">
 
           {/* Logo */}
           <div className="flex items-center gap-2 flex-shrink-0">
-            <div className="w-7 h-7 bg-avenue-dark rounded-md flex items-center justify-center">
-              <span className="text-white font-bold text-sm">A</span>
-            </div>
-            <span className="font-bold text-avenue-dark text-base tracking-tight">Avenue</span>
+            <Logo size={20} className="text-avenue-dark" />
+            <span className="font-bold text-avenue-dark text-base tracking-tight">avenue</span>
           </div>
 
           {/* Group picker */}
@@ -80,7 +81,7 @@ export default function TopNav() {
               <ChevronDown size={13} className={`text-avenue-muted transition-transform ${groupOpen ? 'rotate-180' : ''}`} />
             </button>
             {groupOpen && (
-              <div className="absolute top-full left-0 mt-2 w-52 bg-white border border-avenue-border rounded-xl shadow-card overflow-hidden z-50 animate-fade-in">
+              <div className="absolute top-full left-0 mt-2 w-52 bg-avenue-surface border border-avenue-border rounded-xl shadow-card overflow-hidden z-50 animate-fade-in">
                 {groups.map((g) => (
                   <button key={g.id} onClick={() => { setActiveGroup(g.id); setGroupOpen(false) }}
                     className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-avenue-surface transition-colors text-left ${g.id === activeGroupId ? 'font-semibold text-avenue-dark' : 'text-avenue-muted'}`}>
@@ -103,7 +104,7 @@ export default function TopNav() {
           <nav className="flex items-center gap-1 flex-1">
             {MAIN_TABS.map(({ id, label }) => (
               <button key={id} onClick={() => { setPage(id); setManageOpen(false) }}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${currentPage === id ? 'bg-avenue-dark text-white' : 'text-avenue-muted hover:text-avenue-dark hover:bg-avenue-light'}`}>
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${currentPage === id ? 'bg-avenue-dark text-white dark:bg-white dark:text-black' : 'text-avenue-muted hover:text-avenue-dark hover:bg-avenue-light'}`}>
                 {label}
               </button>
             ))}
@@ -112,7 +113,7 @@ export default function TopNav() {
             <div className="relative">
               <button
                 onClick={() => { setManageOpen(!manageOpen); setGroupOpen(false); setUserOpen(false) }}
-                className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${isManagePage ? 'bg-avenue-dark text-white' : 'text-avenue-muted hover:text-avenue-dark hover:bg-avenue-light'}`}>
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${isManagePage ? 'bg-avenue-dark text-white dark:bg-white dark:text-black' : 'text-avenue-muted hover:text-avenue-dark hover:bg-avenue-light'}`}>
                 Manage <ChevronDown size={13} className={`transition-transform ${manageOpen ? 'rotate-180' : ''}`} />
               </button>
               {manageOpen && (
@@ -128,10 +129,17 @@ export default function TopNav() {
             </div>
           </nav>
 
-          {/* Right: Add + User */}
+          {/* Right: Dark toggle + Add + User */}
           <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={toggleDark}
+              className="w-8 h-8 flex items-center justify-center rounded-lg text-avenue-muted hover:text-avenue-dark hover:bg-avenue-light transition-all"
+              aria-label="Toggle dark mode"
+            >
+              {darkMode ? <Sun size={15} /> : <Moon size={15} />}
+            </button>
             <button onClick={() => setShowAdd(true)}
-              className="flex items-center gap-1.5 bg-avenue-dark text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-avenue-dark/90 transition-all">
+              className="flex items-center gap-1.5 bg-avenue-dark text-white dark:bg-white dark:text-black text-sm font-medium px-4 py-2 rounded-lg transition-all">
               <Plus size={15} /> Add expense
             </button>
 
@@ -145,7 +153,7 @@ export default function TopNav() {
                 {initials(user?.name)}
               </button>
               {userOpen && (
-                <div className="absolute top-full right-0 mt-2 w-52 bg-white border border-avenue-border rounded-xl shadow-card overflow-hidden z-50 animate-fade-in">
+                <div className="absolute top-full right-0 mt-2 w-52 bg-avenue-surface border border-avenue-border rounded-xl shadow-card overflow-hidden z-50 animate-fade-in">
                   <div className="px-4 py-3 border-b border-avenue-border">
                     <p className="text-sm font-semibold text-avenue-dark">{user?.name}</p>
                     <p className="text-xs text-avenue-muted truncate">{user?.email}</p>

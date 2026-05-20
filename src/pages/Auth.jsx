@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { ArrowLeft, Eye, EyeOff } from 'lucide-react'
 import useStore from '../store/useStore'
+import Logo from '../components/Logo'
 
 export default function Auth() {
   const setAppView = useStore((s) => s.setAppView)
@@ -33,7 +34,7 @@ export default function Auth() {
 
   if (confirmed) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center p-6">
+      <div className="min-h-screen bg-avenue-bg flex items-center justify-center p-6">
         <div className="text-center max-w-sm">
           <div className="w-12 h-12 bg-avenue-surface rounded-full flex items-center justify-center mx-auto mb-4 border border-avenue-border">
             <span className="text-2xl">📬</span>
@@ -56,17 +57,17 @@ export default function Auth() {
   }
 
   return (
-    <div className="min-h-screen bg-white flex">
-      {/* Left panel */}
-      <div className="hidden lg:flex flex-col justify-between w-1/2 bg-avenue-dark p-12">
+    <div className="min-h-screen bg-avenue-bg flex">
+      {/* Left panel — always dark navy, never flips in dark mode */}
+      <div className="hidden lg:flex flex-col justify-between w-1/2 bg-[#0D2E3F] p-12">
         <button onClick={() => setAppView('landing')} className="flex items-center gap-2 text-white/50 hover:text-white transition-colors text-sm">
           <ArrowLeft size={16} /> Back to home
         </button>
 
         <div>
           <div className="mb-8">
-            <div className="w-9 h-9 bg-white/10 rounded-lg flex items-center justify-center mb-6">
-              <span className="text-white font-bold text-base">A</span>
+            <div className="w-9 h-9 bg-white/10 rounded-xl flex items-center justify-center mb-6">
+              <Logo size={18} className="text-white" />
             </div>
             <h2 className="text-3xl font-bold text-white leading-tight mb-4">
               Your money,<br />finally clear.
@@ -106,10 +107,8 @@ export default function Auth() {
 
         <div className="w-full max-w-sm">
           <div className="lg:hidden flex items-center gap-2 mb-8">
-            <div className="w-7 h-7 bg-avenue-dark rounded-md flex items-center justify-center">
-              <span className="text-white font-bold text-sm">A</span>
-            </div>
-            <span className="font-bold text-avenue-dark text-lg">Avenue</span>
+            <Logo size={20} className="text-avenue-dark" />
+            <span className="font-bold text-avenue-dark text-lg">avenue</span>
           </div>
 
           <h1 className="text-2xl font-bold text-avenue-dark mb-1">
@@ -168,7 +167,7 @@ export default function Auth() {
             )}
 
             <button type="submit" disabled={submitting}
-              className="w-full bg-avenue-dark text-white font-medium py-3 rounded-lg hover:bg-avenue-dark/90 transition-all text-sm mt-2 disabled:opacity-60">
+              className="w-full bg-[#0D2E3F] text-white dark:bg-white dark:text-black font-medium py-3 rounded-lg transition-all text-sm mt-2 disabled:opacity-60">
               {submitting ? 'Please wait…' : (mode === 'login' ? 'Sign in to Avenue →' : 'Create my space →')}
             </button>
           </form>
