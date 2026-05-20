@@ -11,6 +11,7 @@ export default function Auth() {
   const [showPass, setShowPass] = useState(false)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [confirmed, setConfirmed] = useState(false)
   const [form, setForm] = useState({ name: '', email: '', password: '' })
 
   const up = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
@@ -23,7 +24,35 @@ export default function Auth() {
       ? await login(form.email, form.password)
       : await signup(form.name, form.email, form.password)
     setSubmitting(false)
+    if (result.success && result.needsConfirmation) {
+      setConfirmed(true)
+      return
+    }
     if (!result.success) setError(result.message)
+  }
+
+  if (confirmed) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center p-6">
+        <div className="text-center max-w-sm">
+          <div className="w-12 h-12 bg-avenue-surface rounded-full flex items-center justify-center mx-auto mb-4 border border-avenue-border">
+            <span className="text-2xl">📬</span>
+          </div>
+          <h2 className="text-xl font-bold text-avenue-dark mb-2">Check your email</h2>
+          <p className="text-sm text-avenue-muted leading-relaxed">
+            We sent a confirmation link to{' '}
+            <span className="font-medium text-avenue-dark">{form.email}</span>.
+            Click it to activate your account, then come back and sign in.
+          </p>
+          <button
+            onClick={() => { setConfirmed(false); setMode('login') }}
+            className="mt-6 text-sm font-medium text-avenue-dark hover:text-avenue-muted transition-colors"
+          >
+            Back to sign in →
+          </button>
+        </div>
+      </div>
+    )
   }
 
   return (

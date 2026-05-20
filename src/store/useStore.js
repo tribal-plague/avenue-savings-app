@@ -118,12 +118,10 @@ const useStore = create((set, get) => ({
       const groupIds = (myMemberships || []).map(r => r.group_id)
 
       if (groupIds.length === 0) {
-        set({
-          currentUserId: userId,
-          users: { [userId]: mapProfile({ ...profile, email: '' }) },
-          groups: [], categories: [], expenses: [], invites: [],
-          activeGroupId: null, isLoading: false, isAuthenticated: true, appView: 'app',
-        })
+        // First login after email confirmation — run account setup now
+        const name = profile?.name || 'User'
+        await get()._setupNewUser(userId, name)
+        await get().loadUserData(userId)
         return
       }
 
@@ -187,34 +185,37 @@ const useStore = create((set, get) => ({
       email, password, options: { data: { name } },
     })
     if (error) return { success: false, message: error.message }
-    if (!data.user) return { success: false, message: 'Check your email to confirm your account.' }
+    if (!data.user) return { success: false, message: 'Signup failed. Please try again.' }
 
-    const userId = data.user.id
+    // Email confirmation is ON — session is null until they confirm
+    if (!data.session) {
+      return { success: true, needsConfirmation: true }
+    }
 
-    // Upsert profile (trigger may have already created it)
+    // Email confirmation is OFF — set up account immediately
+    await get()._setupNewUser(data.user.id, name)
+    await get().loadUserData(data.user.id)
+    return { success: true }
+  },
+
+  // Internal: creates default group + categories for a new user
+  _setupNewUser: async (userId, name) => {
     await supabase.from('profiles').upsert({
       id: userId, name, salary: 0, savings_goal: 20,
       avatar_color: '#7c3aed', currency_symbol: '$',
     }, { onConflict: 'id' })
 
-    // Create default group
     const { data: group } = await supabase
       .from('groups')
       .insert({ name: `${name.split(' ')[0]}'s Finances`, type: 'individual', invite_code: genCode(), created_by: userId })
       .select().single()
 
-    if (!group) return { success: false, message: 'Failed to create your space. Please try again.' }
+    if (!group) return
 
-    // Add as admin
     await supabase.from('group_members').insert({ group_id: group.id, user_id: userId, is_admin: true })
-
-    // Default categories
     await supabase.from('categories').insert(
       DEFAULT_CATEGORIES.map(c => ({ ...c, group_id: group.id, created_by: userId }))
     )
-
-    await get().loadUserData(userId)
-    return { success: true }
   },
 
   logout: async () => {
