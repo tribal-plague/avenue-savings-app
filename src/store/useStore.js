@@ -119,7 +119,7 @@ const useStore = create((set, get) => ({
   getGroupExpenses: (groupId) => get().expenses.filter((e) => e.groupId === groupId),
 
   // ── Data loading ──────────────────────────────────────────────────────────
-  loadUserData: async (userId) => {
+  loadUserData: async (userId, _depth = 0) => {
     set({ isLoading: true })
     try {
       // Profile
@@ -132,10 +132,15 @@ const useStore = create((set, get) => ({
       const groupIds = (myMemberships || []).map(r => r.group_id)
 
       if (groupIds.length === 0) {
+        if (_depth > 0) {
+          // Already ran setup once and still no groups — stop to avoid infinite loop
+          set({ isLoading: false, appView: 'landing' })
+          return
+        }
         // First login after email confirmation — run account setup now
         const name = profile?.name || 'User'
         await get()._setupNewUser(userId, name)
-        await get().loadUserData(userId)
+        await get().loadUserData(userId, 1)
         return
       }
 
@@ -188,7 +193,13 @@ const useStore = create((set, get) => ({
   login: async (email, password) => {
     if (!email || !password) return { success: false, message: 'Please fill in all fields.' }
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) return { success: false, message: error.message }
+    if (error) {
+      if (error.message?.toLowerCase().includes('email not confirmed'))
+        return { success: false, message: 'Your email isn\'t confirmed yet. Check your inbox and click the link we sent you.' }
+      if (error.message?.toLowerCase().includes('invalid login credentials'))
+        return { success: false, message: 'Incorrect email or password. Please try again.' }
+      return { success: false, message: error.message }
+    }
     await get().loadUserData(data.user.id)
     return { success: true }
   },
@@ -198,7 +209,13 @@ const useStore = create((set, get) => ({
     const { data, error } = await supabase.auth.signUp({
       email, password, options: { data: { name } },
     })
-    if (error) return { success: false, message: error.message }
+    if (error) {
+      if (error.message?.toLowerCase().includes('rate limit') || error.message?.toLowerCase().includes('over_email_send_rate_limit'))
+        return { success: false, message: 'Too many signup attempts. Please wait a few minutes before trying again.' }
+      if (error.message?.toLowerCase().includes('already registered') || error.message?.toLowerCase().includes('user already registered'))
+        return { success: false, message: 'An account with this email already exists. Try signing in instead.' }
+      return { success: false, message: error.message }
+    }
     if (!data.user) return { success: false, message: 'Signup failed. Please try again.' }
 
     // Email confirmation is ON — session is null until they confirm
