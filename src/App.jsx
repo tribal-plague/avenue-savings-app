@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { supabase } from './lib/supabase'
 import useStore from './store/useStore'
 import TopNav from './components/Layout/TopNav'
+import MobileNav from './components/Layout/MobileNav'
 import Landing from './pages/Landing'
 import Auth from './pages/Auth'
 import Dashboard from './pages/Dashboard'
@@ -73,9 +74,10 @@ export default function App() {
   return (
     <div className="min-h-screen bg-avenue-bg">
       <TopNav />
-      <main className="pb-12">
+      <main className="pb-20 md:pb-12">
         <PageComponent />
       </main>
+      <MobileNav />
     </div>
   )
 }

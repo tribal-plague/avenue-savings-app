@@ -1,11 +1,12 @@
-import { useState } from 'react'
-import { Save, Pencil } from 'lucide-react'
+import { useState, useRef } from 'react'
+import { Save, Pencil, Camera } from 'lucide-react'
 import useStore from '../store/useStore'
 import { pct, initials } from '../utils/formatters'
 import { useCurrency } from '../hooks/useCurrency'
 import { generateInsights } from '../utils/insights'
 
 const AVATAR_COLORS = ['#7c3aed','#0ea5e9','#10b981','#f97316','#ec4899','#f59e0b','#ef4444','#6366f1']
+const AVATAR_EMOJIS = ['😊','😎','🦊','🐼','🦁','🐸','🦄','🐙','🎯','🚀','💎','🌙','⚡','🍀','🎸','🏔️']
 
 const CURRENCIES = [
   { symbol: '$',  label: 'USD — US Dollar' },
@@ -28,23 +29,35 @@ export default function Budget() {
   const activeGroupId = useStore((s) => s.activeGroupId)
   const expenses      = useStore((s) => s.expenses)
   const categories    = useStore((s) => s.getGroupCategories(activeGroupId))
-  const updateProfile = useStore((s) => s.updateProfile)
+  const updateProfile  = useStore((s) => s.updateProfile)
+  const uploadAvatar   = useStore((s) => s.uploadAvatar)
   const updateCategory = useStore((s) => s.updateCategory)
   const { fmt: fmtCurrency, symbol } = useCurrency()
 
   const user = users[currentUserId]
   const groupExpenses = expenses.filter((e) => e.groupId === activeGroupId)
+  const fileRef = useRef(null)
+  const [uploading, setUploading] = useState(false)
 
-  const [editProfile,   setEditProfile]   = useState(false)
+  const [editProfile, setEditProfile] = useState(false)
   const [profile, setProfile] = useState({
     name: user?.name || '',
     email: user?.email || '',
     salary: user?.salary || '',
     savingsGoal: user?.savingsGoal || 20,
     avatarColor: user?.avatarColor || '#7c3aed',
+    avatarEmoji: user?.avatarEmoji || '',
     currencySymbol: user?.currencySymbol || '$',
   })
   const [editingBudget, setEditingBudget] = useState({})
+
+  const handleAvatarUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    await uploadAvatar(file)
+    setUploading(false)
+  }
 
   const { catTotals } = generateInsights(groupExpenses, categories, user, fmtCurrency)
 
@@ -58,6 +71,8 @@ export default function Budget() {
     updateProfile({ ...profile, salary: parseFloat(profile.salary) || 0, savingsGoal: parseFloat(profile.savingsGoal) || 0 })
     setEditProfile(false)
   }
+
+  const currentAvatar = users[currentUserId]
 
   return (
     <div className="p-6 animate-fade-in max-w-3xl">
@@ -73,6 +88,48 @@ export default function Budget() {
 
         {editProfile ? (
           <div className="space-y-4">
+            {/* Avatar upload */}
+            <div>
+              <label className="block text-xs font-medium text-avenue-muted mb-2">Profile photo</label>
+              <div className="flex items-center gap-4">
+                <div className="relative">
+                  <div className="w-16 h-16 rounded-full overflow-hidden flex items-center justify-center text-2xl"
+                    style={{ backgroundColor: profile.avatarColor }}>
+                    {currentAvatar?.avatarUrl
+                      ? <img src={currentAvatar.avatarUrl} alt="" className="w-full h-full object-cover" />
+                      : (profile.avatarEmoji || <span className="text-white text-xl font-bold">{initials(profile.name)}</span>)}
+                  </div>
+                  <button type="button" onClick={() => fileRef.current?.click()}
+                    className="absolute -bottom-1 -right-1 w-6 h-6 bg-avenue-dark text-white rounded-full flex items-center justify-center hover:bg-avenue-dark/90 transition-all">
+                    {uploading ? <span className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" /> : <Camera size={11} />}
+                  </button>
+                  <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
+                </div>
+                <div className="text-xs text-avenue-muted">
+                  <p>Upload a photo, or pick an emoji below.</p>
+                  <p className="mt-0.5 text-avenue-muted/60">JPG, PNG up to 2MB</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Emoji picker */}
+            <div>
+              <label className="block text-xs font-medium text-avenue-muted mb-2">Or choose an emoji avatar</label>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={() => setProfile({ ...profile, avatarEmoji: '' })}
+                  className={`w-9 h-9 rounded-lg border text-sm font-bold transition-all ${!profile.avatarEmoji ? 'border-avenue-dark ring-2 ring-avenue-dark/20' : 'border-avenue-border hover:border-avenue-dark/30'}`}
+                  style={{ backgroundColor: profile.avatarColor, color: 'white' }}>
+                  {initials(profile.name) || 'A'}
+                </button>
+                {AVATAR_EMOJIS.map((em) => (
+                  <button key={em} type="button" onClick={() => setProfile({ ...profile, avatarEmoji: em })}
+                    className={`w-9 h-9 rounded-lg border text-lg transition-all ${profile.avatarEmoji === em ? 'border-avenue-dark ring-2 ring-avenue-dark/20 bg-avenue-light' : 'border-avenue-border hover:border-avenue-dark/30'}`}>
+                    {em}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-medium text-avenue-muted mb-1">Full name</label>
@@ -139,9 +196,16 @@ export default function Budget() {
           </div>
         ) : (
           <div className="flex items-center gap-5">
-            <div className="w-14 h-14 rounded-full flex items-center justify-center text-white font-bold text-lg"
-              style={{ backgroundColor: user?.avatarColor || '#7c3aed' }}>
-              {initials(user?.name)}
+            <div className="relative group cursor-pointer" onClick={() => setEditProfile(true)}>
+              <div className="w-14 h-14 rounded-full overflow-hidden flex items-center justify-center text-2xl"
+                style={{ backgroundColor: user?.avatarColor || '#7c3aed' }}>
+                {user?.avatarUrl
+                  ? <img src={user.avatarUrl} alt="" className="w-full h-full object-cover" />
+                  : (user?.avatarEmoji || <span className="text-white font-bold text-lg">{initials(user?.name)}</span>)}
+              </div>
+              <div className="absolute inset-0 rounded-full bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                <Camera size={16} className="text-white" />
+              </div>
             </div>
             <div>
               <p className="font-semibold text-avenue-dark text-base">{user?.name}</p>

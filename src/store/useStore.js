@@ -11,6 +11,8 @@ const mapProfile = (p) => ({
   salary: p.salary || 0,
   savingsGoal: p.savings_goal || 20,
   avatarColor: p.avatar_color || '#7c3aed',
+  avatarEmoji: p.avatar_emoji || '',
+  avatarUrl: p.avatar_url || '',
   currencySymbol: p.currency_symbol || '$',
 })
 
@@ -298,9 +300,23 @@ const useStore = create((set, get) => ({
     if (updates.salary !== undefined)         dbUpdates.salary = updates.salary
     if (updates.savingsGoal !== undefined)    dbUpdates.savings_goal = updates.savingsGoal
     if (updates.avatarColor !== undefined)    dbUpdates.avatar_color = updates.avatarColor
+    if (updates.avatarEmoji !== undefined)    dbUpdates.avatar_emoji = updates.avatarEmoji
+    if (updates.avatarUrl !== undefined)      dbUpdates.avatar_url = updates.avatarUrl
     if (updates.currencySymbol !== undefined) dbUpdates.currency_symbol = updates.currencySymbol
     await supabase.from('profiles').update(dbUpdates).eq('id', currentUserId)
     set((s) => ({ users: { ...s.users, [currentUserId]: { ...s.users[currentUserId], ...updates } } }))
+  },
+
+  uploadAvatar: async (file) => {
+    const { currentUserId } = get()
+    const ext = file.name.split('.').pop()
+    const path = `${currentUserId}/avatar.${ext}`
+    const { error } = await supabase.storage.from('avatars').upload(path, file, { upsert: true })
+    if (error) { console.error('[avenue] avatar upload failed:', error.message); return null }
+    const { data } = supabase.storage.from('avatars').getPublicUrl(path)
+    const url = data.publicUrl + '?t=' + Date.now()
+    await get().updateProfile({ avatarUrl: url, avatarEmoji: '' })
+    return url
   },
 
   // ── Groups ────────────────────────────────────────────────────────────────

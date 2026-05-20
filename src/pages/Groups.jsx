@@ -120,7 +120,7 @@ export default function Groups() {
           const isActive = group.id === activeGroupId
 
           return (
-            <div key={group.id} className={`bg-white rounded-2xl border shadow-sm transition-all ${isActive ? 'border-avenue-dark/30 ring-2 ring-avenue-100' : 'border-avenue-border'}`}>
+            <div key={group.id} className={`bg-avenue-surface rounded-2xl border shadow-sm transition-all ${isActive ? 'border-avenue-dark/30' : 'border-avenue-border'}`}>
               <div className="p-5">
                 <div className="flex items-start justify-between">
                   <div className="flex items-start gap-3">
@@ -261,40 +261,23 @@ export default function Groups() {
                 </button>
               </div>
 
-              {/* Email invite */}
-              <div>
-                <p className="text-xs font-medium text-avenue-muted mb-2">Invite by email</p>
-                <div className="flex gap-2">
-                  <input value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)}
-                    className="flex-1 border border-avenue-border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-avenue-dark/40"
-                    placeholder="friend@example.com" type="email" />
-                  <button onClick={handleSendInvite} disabled={!inviteEmail} className="bg-avenue-dark text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-avenue-dark/90 disabled:opacity-40">
-                    {inviteSent ? '✓ Sent' : 'Send'}
-                  </button>
-                </div>
-                {inviteSent && <p className="text-xs text-emerald-600 mt-1">Invite sent! (In a real app, an email would be delivered.)</p>}
+              {/* How to invite */}
+              <div className="bg-avenue-bg rounded-xl p-4 border border-avenue-border">
+                <p className="text-xs font-semibold text-avenue-dark mb-2">How to invite someone</p>
+                <ol className="text-xs text-avenue-muted space-y-1.5 list-decimal list-inside">
+                  <li>Copy the invite code above</li>
+                  <li>Share it with your friend via WhatsApp, iMessage, or email</li>
+                  <li>They open Avenue, click <strong className="text-avenue-dark">Join with Code</strong>, and enter it</li>
+                </ol>
               </div>
 
-              {/* Pending invites */}
-              {pendingInvites.length > 0 && (
-                <div>
-                  <p className="text-xs font-medium text-avenue-muted mb-2">Pending invites</p>
-                  <div className="space-y-2">
-                    {pendingInvites.map((inv) => (
-                      <div key={inv.id} className="flex items-center justify-between p-3 bg-avenue-surface rounded-xl">
-                        <div className="flex items-center gap-2">
-                          <Mail size={14} className="text-avenue-muted/70" />
-                          <span className="text-sm text-avenue-dark">{inv.email}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">Pending</span>
-                          <button onClick={() => revokeInvite(inv.id)} className="text-xs text-red-400 hover:text-red-600">Revoke</button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+              {/* Share via WhatsApp shortcut */}
+              <a
+                href={`https://wa.me/?text=${encodeURIComponent(`Join my group on Avenue! Use code: ${groups.find((g) => g.id === showInvite)?.inviteCode}`)}`}
+                target="_blank" rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2 w-full border border-avenue-border text-avenue-dark py-2.5 rounded-xl text-sm font-medium hover:bg-avenue-light transition-colors">
+                <span className="text-base">💬</span> Share via WhatsApp
+              </a>
             </div>
           )
         })()}
