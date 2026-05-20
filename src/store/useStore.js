@@ -195,8 +195,14 @@ const useStore = create((set, get) => ({
         appView: 'app',
       })
     } catch (err) {
-      console.error('loadUserData error:', err)
-      set({ isLoading: false, appView: 'landing' })
+      console.error('[avenue] loadUserData error:', err?.message || err)
+      // User is authenticated — go to app with empty state rather than kicking them out
+      set({
+        currentUserId: userId,
+        isLoading: false,
+        isAuthenticated: true,
+        appView: 'app',
+      })
     }
   },
 
