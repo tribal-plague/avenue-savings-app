@@ -5,6 +5,7 @@ import Modal from '../components/ui/Modal'
 import { fmtDate, initials, monthLabel } from '../utils/formatters'
 import { useCurrency } from '../hooks/useCurrency'
 import { getMonthExpenses, sumExpenses, getCategoryTotals } from '../utils/insights'
+import { getBillStatus, getMonthlyCommitment } from '../utils/bills'
 
 export default function Admin() {
   const { fmt } = useCurrency()
@@ -13,6 +14,8 @@ export default function Admin() {
   const groups = useStore((s) => s.groups)
   const activeGroupId = useStore((s) => s.activeGroupId)
   const expenses = useStore((s) => s.expenses)
+  const bills = useStore((s) => s.getGroupBills(activeGroupId))
+  const activityLog = useStore((s) => s.getGroupActivity(activeGroupId))
   const categories = useStore((s) => s.getGroupCategories(activeGroupId))
   const invites = useStore((s) => s.invites)
   const removeMember = useStore((s) => s.removeMember)
@@ -48,6 +51,9 @@ export default function Admin() {
   const catTotals = getCategoryTotals(thisMonthExp, categories)
   const pendingInvites = invites.filter((i) => i.groupId === activeGroupId)
   const overBudgetCats = catTotals.filter((c) => c.over > 0)
+  const overdueBills = bills.filter((b) => getBillStatus(b.nextDueDate).state === 'overdue')
+  const dueTodayBills = bills.filter((b) => getBillStatus(b.nextDueDate).state === 'due_today')
+  const monthlyBills = getMonthlyCommitment(bills)
 
   const memberStats = (group?.members || []).map((uid) => {
     const user = users[uid]
@@ -126,6 +132,14 @@ export default function Admin() {
               <p className="text-xs text-avenue-muted/70 mb-1">Pending invites</p>
               <p className="text-2xl font-bold text-avenue-dark">{pendingInvites.length}</p>
             </div>
+            <div className="bg-white rounded-2xl p-4 border border-avenue-border shadow-sm">
+              <p className="text-xs text-avenue-muted/70 mb-1">Fixed bills</p>
+              <p className="text-2xl font-bold text-avenue-dark">{fmt(monthlyBills)}</p>
+            </div>
+            <div className="bg-white rounded-2xl p-4 border border-avenue-border shadow-sm">
+              <p className="text-xs text-avenue-muted/70 mb-1">Due or overdue</p>
+              <p className="text-2xl font-bold text-red-500">{overdueBills.length + dueTodayBills.length}</p>
+            </div>
           </div>
 
           {overBudgetCats.length > 0 && (
@@ -167,6 +181,25 @@ export default function Admin() {
                 </div>
               ))}
             </div>
+          </div>
+
+          <div className="bg-white rounded-2xl p-5 border border-avenue-border shadow-sm">
+            <p className="font-semibold text-avenue-dark mb-4">Household Activity</p>
+            {activityLog.length === 0 ? (
+              <p className="text-sm text-avenue-muted/70 py-3">No bill activity yet.</p>
+            ) : (
+              <div className="space-y-3">
+                {activityLog.slice(0, 6).map((item) => (
+                  <div key={item.id} className="flex items-start justify-between gap-3 border-b border-avenue-border last:border-0 pb-3 last:pb-0">
+                    <div>
+                      <p className="text-sm text-avenue-dark">{item.summary}</p>
+                      <p className="text-xs text-avenue-muted/70 mt-0.5">{users[item.actorId]?.name || 'Household'} - {fmtDate(item.createdAt.slice(0, 10))}</p>
+                    </div>
+                    <span className="text-xs text-avenue-muted bg-avenue-surface border border-avenue-border rounded-full px-2 py-0.5">{item.action.replaceAll('_', ' ')}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

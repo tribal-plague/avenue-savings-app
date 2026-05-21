@@ -2,6 +2,7 @@ import useStore from '../store/useStore'
 import { pct, monthLabel } from '../utils/formatters'
 import { useCurrency } from '../hooks/useCurrency'
 import { getMonthlyTrend, getMonthExpenses, sumExpenses, getCategoryTotals } from '../utils/insights'
+import { getBillStatus, getMonthlyCommitment } from '../utils/bills'
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
   BarChart, Bar, Cell, PieChart, Pie, Legend, LineChart, Line
@@ -37,6 +38,7 @@ export default function Analytics() {
   const { fmt } = useCurrency()
   const activeGroupId = useStore((s) => s.activeGroupId)
   const expenses = useStore((s) => s.expenses)
+  const bills = useStore((s) => s.getGroupBills(activeGroupId))
   const categories = useStore((s) => s.getGroupCategories(activeGroupId))
   const users = useStore((s) => s.users)
   const groups = useStore((s) => s.groups)
@@ -84,6 +86,8 @@ export default function Analytics() {
   const totalThisMonth = sumExpenses(thisMonthExp)
   const totalLastMonth = sumExpenses(lastMonthExp)
   const momChange = totalLastMonth > 0 ? ((totalThisMonth - totalLastMonth) / totalLastMonth * 100).toFixed(1) : null
+  const monthlyBills = getMonthlyCommitment(bills)
+  const dueBills = bills.filter((b) => ['overdue', 'due_today'].includes(getBillStatus(b.nextDueDate).state))
 
   return (
     <div className="p-6 animate-fade-in space-y-6">
@@ -102,6 +106,11 @@ export default function Analytics() {
             {momChange !== null ? (parseFloat(momChange) > 0 ? '+' : '') + momChange + '%' : '—'}
           </p>
           <p className="text-xs text-avenue-muted/70 mt-0.5">vs last month</p>
+        </div>
+        <div className="bg-white rounded-2xl p-4 border border-avenue-border shadow-sm">
+          <p className="text-xs font-medium text-avenue-muted/70 mb-1">Fixed bills</p>
+          <p className="text-xl font-bold text-avenue-dark">{fmt(monthlyBills)}</p>
+          <p className="text-xs text-avenue-muted/70 mt-0.5">{dueBills.length} due or overdue</p>
         </div>
       </div>
 

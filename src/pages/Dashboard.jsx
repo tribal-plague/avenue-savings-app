@@ -1,6 +1,7 @@
 import useStore from '../store/useStore'
 import { fmtShortDate, pct, daysInMonth } from '../utils/formatters'
 import { generateInsights, getMonthlyTrend } from '../utils/insights'
+import { getBillStatus, getMonthlyCommitment, sortBillsByDueDate } from '../utils/bills'
 import { useCurrency } from '../hooks/useCurrency'
 import { ResponsiveContainer, AreaChart, Area, Tooltip, XAxis } from 'recharts'
 
@@ -40,6 +41,7 @@ export default function Dashboard() {
   const activeGroupId = useStore((s) => s.activeGroupId)
   const groups        = useStore((s) => s.groups)
   const expenses      = useStore((s) => s.expenses)
+  const bills         = useStore((s) => s.getGroupBills(activeGroupId))
   const categories    = useStore((s) => s.getGroupCategories(activeGroupId))
   const setPage       = useStore((s) => s.setPage)
   const { fmt: fmtCurrency } = useCurrency()
@@ -64,6 +66,10 @@ export default function Dashboard() {
   const topCats  = [...catTotals].filter((c) => c.spent > 0).sort((a, b) => b.spent - a.spent)
   const recentExp = [...groupExpenses].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5)
   const members   = (activeGroup?.members || []).map((id) => users[id]).filter(Boolean)
+  const sortedBills = sortBillsByDueDate(bills)
+  const overdueBills = sortedBills.filter((b) => getBillStatus(b.nextDueDate).state === 'overdue')
+  const nextBills = sortedBills.slice(0, 3)
+  const monthlyBills = getMonthlyCommitment(bills)
 
   return (
     <div className="max-w-7xl mx-auto px-4 md:px-6 py-6 md:py-8 animate-fade-in pb-24 md:pb-8">
@@ -132,6 +138,48 @@ export default function Dashboard() {
           </div>
 
           {/* Avenue Analysis — always dark regardless of mode */}
+          {/* Household Bills */}
+          <div className="bg-white rounded-xl border border-avenue-border p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-avenue-dark text-sm">Household Bills</h3>
+              <button onClick={() => setPage('bills')} className="text-xs text-avenue-muted hover:text-avenue-dark transition-colors">
+                Manage
+              </button>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-avenue-surface rounded-lg mb-3">
+              <span className="text-xs text-avenue-muted">Monthly fixed bills</span>
+              <span className="text-sm font-bold text-avenue-dark">{fmtCurrency(monthlyBills)}</span>
+            </div>
+            {overdueBills.length > 0 && (
+              <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
+                {overdueBills.length} overdue bill{overdueBills.length === 1 ? '' : 's'} needs attention.
+              </div>
+            )}
+            {nextBills.length === 0 ? (
+              <div className="py-5 text-center">
+                <p className="text-sm text-avenue-muted">No recurring bills tracked</p>
+                <button onClick={() => setPage('bills')} className="text-xs text-avenue-dark font-medium mt-2 hover:text-avenue-muted">Add bills</button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {nextBills.map((bill) => {
+                  const due = getBillStatus(bill.nextDueDate)
+                  const payer = users[bill.payerId]
+                  return (
+                    <div key={bill.id} className="flex items-center justify-between gap-3 py-2 border-b border-avenue-border last:border-0">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-avenue-dark truncate">{bill.name}</p>
+                        <p className="text-xs text-avenue-muted truncate">{due.label}{payer ? ` - ${payer.name}` : ''}</p>
+                      </div>
+                      <span className="text-sm font-semibold text-avenue-dark tabular-nums">{fmtCurrency(bill.amount)}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Avenue Analysis */}
           <div className="bg-[#0D2E3F] dark:bg-zinc-900 rounded-xl p-5">
             <div className="flex items-center gap-2 mb-4">
               <span className="text-white/40 text-sm">✦</span>

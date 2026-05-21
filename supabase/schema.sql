@@ -64,6 +64,37 @@ create table public.invites (
   created_at timestamptz default now()
 );
 
+-- Recurring Bills
+create table public.recurring_bills (
+  id uuid primary key default gen_random_uuid(),
+  group_id uuid references public.groups(id) on delete cascade not null,
+  name text not null,
+  amount numeric not null default 0,
+  category_id uuid references public.categories(id) on delete set null,
+  payer_id uuid references public.profiles(id) on delete set null,
+  frequency text not null default 'monthly' check (frequency in ('weekly', 'monthly', 'yearly')),
+  due_day integer not null default 1 check (due_day between 1 and 31),
+  next_due_date date not null,
+  status text not null default 'active' check (status in ('active', 'paid', 'skipped', 'paused')),
+  notes text default '',
+  created_by uuid references public.profiles(id) on delete set null,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+-- Activity Log
+create table public.activity_log (
+  id uuid primary key default gen_random_uuid(),
+  group_id uuid references public.groups(id) on delete cascade not null,
+  actor_id uuid references public.profiles(id) on delete set null,
+  action text not null,
+  entity_type text not null,
+  entity_id uuid,
+  summary text not null,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz default now()
+);
+
 -- ─── Enable Row Level Security ───────────────────────────────────────────────
 alter table public.profiles enable row level security;
 alter table public.groups enable row level security;
@@ -71,6 +102,8 @@ alter table public.group_members enable row level security;
 alter table public.categories enable row level security;
 alter table public.expenses enable row level security;
 alter table public.invites enable row level security;
+alter table public.recurring_bills enable row level security;
+alter table public.activity_log enable row level security;
 
 -- ─── Profiles RLS ────────────────────────────────────────────────────────────
 create policy "own profile" on public.profiles
@@ -144,6 +177,25 @@ create policy "member can manage invites" on public.invites
     exists (select 1 from public.group_members where group_id = public.invites.group_id and user_id = auth.uid())
   ) with check (
     exists (select 1 from public.group_members where group_id = public.invites.group_id and user_id = auth.uid())
+  );
+
+-- Recurring Bills RLS
+create policy "member can manage recurring bills" on public.recurring_bills
+  for all using (
+    exists (select 1 from public.group_members where group_id = public.recurring_bills.group_id and user_id = auth.uid())
+  ) with check (
+    exists (select 1 from public.group_members where group_id = public.recurring_bills.group_id and user_id = auth.uid())
+  );
+
+-- Activity Log RLS
+create policy "member can read activity log" on public.activity_log
+  for select using (
+    exists (select 1 from public.group_members where group_id = public.activity_log.group_id and user_id = auth.uid())
+  );
+
+create policy "member can insert activity log" on public.activity_log
+  for insert with check (
+    exists (select 1 from public.group_members where group_id = public.activity_log.group_id and user_id = auth.uid())
   );
 
 -- ─── Auto-create profile on signup ───────────────────────────────────────────

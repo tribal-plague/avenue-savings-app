@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, Receipt, Tag, PiggyBank, Users, BarChart3,
+  LayoutDashboard, Receipt, Tag, PiggyBank, Users, BarChart3, CalendarClock,
   ShieldCheck, ChevronDown, Plus, LogOut
 } from 'lucide-react'
 import useStore from '../../store/useStore'
@@ -8,6 +8,7 @@ import { useState } from 'react'
 
 const NAV = [
   { id: 'dashboard',  label: 'Dashboard',   icon: LayoutDashboard },
+  { id: 'bills',      label: 'Bills',       icon: CalendarClock },
   { id: 'expenses',   label: 'Expenses',    icon: Receipt },
   { id: 'categories', label: 'Categories',  icon: Tag },
   { id: 'budget',     label: 'Budget',      icon: PiggyBank },

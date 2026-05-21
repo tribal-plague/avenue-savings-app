@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { supabase } from './lib/supabase'
+import { isSupabaseConfigured, supabase } from './lib/supabase'
 import useStore from './store/useStore'
 import TopNav from './components/Layout/TopNav'
 import MobileNav from './components/Layout/MobileNav'
@@ -12,9 +12,11 @@ import Budget from './pages/Budget'
 import Groups from './pages/Groups'
 import Analytics from './pages/Analytics'
 import Admin from './pages/Admin'
+import Bills from './pages/Bills'
 
 const PAGES = {
   dashboard:  Dashboard,
+  bills:      Bills,
   expenses:   Expenses,
   categories: Categories,
   budget:     Budget,
@@ -32,6 +34,11 @@ export default function App() {
   useEffect(() => {
     useStore.getState().initDarkMode()
 
+    if (!isSupabaseConfigured) {
+      useStore.setState({ isLoading: false, appView: 'config' })
+      return
+    }
+
     // Check for existing Supabase session on mount
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
@@ -46,7 +53,7 @@ export default function App() {
       if (event === 'SIGNED_OUT') {
         useStore.setState({
           currentUserId: null, users: {}, groups: [], categories: [],
-          expenses: [], invites: [], activeGroupId: null,
+          expenses: [], invites: [], recurringBills: [], activityLog: [], activeGroupId: null,
           currentPage: 'dashboard', isAuthenticated: false,
           appView: 'landing', isLoading: false,
         })
@@ -55,6 +62,25 @@ export default function App() {
 
     return () => subscription.unsubscribe()
   }, [])
+
+  if (appView === 'config') {
+    return (
+      <div className="min-h-screen bg-avenue-bg flex items-center justify-center px-6">
+        <div className="max-w-xl w-full bg-white border border-avenue-border rounded-2xl p-6 shadow-card">
+          <div className="w-10 h-10 rounded-xl bg-avenue-dark text-white flex items-center justify-center font-bold mb-4">A</div>
+          <h1 className="text-2xl font-bold text-avenue-dark mb-2">Configure Avenue</h1>
+          <p className="text-sm text-avenue-muted leading-relaxed mb-5">
+            Avenue needs Supabase credentials before it can load household data. Create a local `.env`
+            from `.env.example`, then restart the dev server.
+          </p>
+          <div className="bg-avenue-surface border border-avenue-border rounded-xl p-4 font-mono text-xs text-avenue-dark space-y-1">
+            <p>VITE_SUPABASE_URL=https://your-project.supabase.co</p>
+            <p>VITE_SUPABASE_ANON_KEY=your-supabase-anon-key</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   if (isLoading) {
     return (

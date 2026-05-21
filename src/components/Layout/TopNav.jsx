@@ -8,6 +8,7 @@ import Logo from '../Logo'
 
 const MAIN_TABS = [
   { id: 'dashboard',  label: 'Overview' },
+  { id: 'bills',      label: 'Bills' },
   { id: 'expenses',   label: 'Expenses' },
   { id: 'categories', label: 'Categories' },
   { id: 'analytics',  label: 'Analytics' },

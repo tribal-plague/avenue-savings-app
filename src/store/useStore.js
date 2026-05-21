@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { supabase } from '../lib/supabase'
+import { advanceDueDate } from '../utils/bills'
 
 const genCode = () => 'AVE-' + Math.random().toString(36).slice(2, 6).toUpperCase()
 
@@ -58,6 +59,35 @@ const mapInvite = (i) => ({
   createdAt: i.created_at,
 })
 
+const mapBill = (b) => ({
+  id: b.id,
+  groupId: b.group_id,
+  name: b.name,
+  amount: Number(b.amount) || 0,
+  categoryId: b.category_id || null,
+  payerId: b.payer_id || null,
+  frequency: b.frequency || 'monthly',
+  dueDay: b.due_day || 1,
+  nextDueDate: b.next_due_date,
+  status: b.status || 'active',
+  notes: b.notes || '',
+  createdBy: b.created_by,
+  createdAt: b.created_at,
+  updatedAt: b.updated_at,
+})
+
+const mapActivity = (a) => ({
+  id: a.id,
+  groupId: a.group_id,
+  actorId: a.actor_id,
+  action: a.action,
+  entityType: a.entity_type,
+  entityId: a.entity_id,
+  summary: a.summary,
+  metadata: a.metadata || {},
+  createdAt: a.created_at,
+})
+
 const DEFAULT_CATEGORIES = [
   { name: 'Housing',       icon: '🏠', color: '#6366f1', budget: 1500 },
   { name: 'Food & Dining', icon: '🍔', color: '#f97316', budget: 600  },
@@ -78,6 +108,8 @@ const useStore = create((set, get) => ({
   categories: [],
   expenses: [],
   invites: [],
+  recurringBills: [],
+  activityLog: [],
   activeGroupId: null,
   currentPage: 'dashboard',
   isAuthenticated: false,
@@ -119,6 +151,8 @@ const useStore = create((set, get) => ({
     return groups.find((g) => g.id === activeGroupId)
   },
   getGroupExpenses: (groupId) => get().expenses.filter((e) => e.groupId === groupId),
+  getGroupBills: (groupId) => get().recurringBills.filter((b) => b.groupId === groupId),
+  getGroupActivity: (groupId) => get().activityLog.filter((a) => a.groupId === groupId),
 
   // ── Data loading ──────────────────────────────────────────────────────────
   loadUserData: async (userId, _depth = 0) => {
@@ -164,12 +198,16 @@ const useStore = create((set, get) => ({
         { data: categories },
         { data: expenses },
         { data: invites },
+        { data: recurringBills },
+        { data: activityLog },
       ] = await Promise.all([
         supabase.from('groups').select('*').in('id', groupIds),
         supabase.from('group_members').select('*').in('group_id', groupIds),
         supabase.from('categories').select('*').in('group_id', groupIds),
         supabase.from('expenses').select('*').in('group_id', groupIds).order('date', { ascending: false }),
         supabase.from('invites').select('*').in('group_id', groupIds),
+        supabase.from('recurring_bills').select('*').in('group_id', groupIds).order('next_due_date', { ascending: true }),
+        supabase.from('activity_log').select('*').in('group_id', groupIds).order('created_at', { ascending: false }).limit(80),
       ])
 
       // Fetch all member profiles
@@ -191,6 +229,8 @@ const useStore = create((set, get) => ({
         categories: (categories || []).map(mapCategory),
         expenses: (expenses || []).map(mapExpense),
         invites: (invites || []).map(mapInvite),
+        recurringBills: (recurringBills || []).map(mapBill),
+        activityLog: (activityLog || []).map(mapActivity),
         activeGroupId: groupIds[0],
         isLoading: false,
         isAuthenticated: true,
@@ -287,7 +327,7 @@ const useStore = create((set, get) => ({
     await supabase.auth.signOut()
     set({
       currentUserId: null, users: {}, groups: [], categories: [],
-      expenses: [], invites: [], activeGroupId: null,
+      expenses: [], invites: [], recurringBills: [], activityLog: [], activeGroupId: null,
       currentPage: 'dashboard', isAuthenticated: false, appView: 'landing', isLoading: false,
     })
   },
@@ -347,6 +387,8 @@ const useStore = create((set, get) => ({
       groups: s.groups.filter((g) => g.id !== groupId),
       expenses: s.expenses.filter((e) => e.groupId !== groupId),
       categories: s.categories.filter((c) => c.groupId !== groupId),
+      recurringBills: s.recurringBills.filter((b) => b.groupId !== groupId),
+      activityLog: s.activityLog.filter((a) => a.groupId !== groupId),
       activeGroupId: s.activeGroupId === groupId
         ? (s.groups.find((g) => g.id !== groupId)?.id || null)
         : s.activeGroupId,
@@ -468,6 +510,142 @@ const useStore = create((set, get) => ({
   },
 
   // ── Invites ───────────────────────────────────────────────────────────────
+  logActivity: async ({ groupId, action, entityType, entityId, summary, metadata = {} }) => {
+    const { currentUserId } = get()
+    const { data } = await supabase
+      .from('activity_log')
+      .insert({
+        group_id: groupId,
+        actor_id: currentUserId,
+        action,
+        entity_type: entityType,
+        entity_id: entityId || null,
+        summary,
+        metadata,
+      })
+      .select().single()
+    if (data) set((s) => ({ activityLog: [mapActivity(data), ...s.activityLog].slice(0, 80) }))
+  },
+
+  addBill: async (data) => {
+    const { currentUserId } = get()
+    const { data: bill, error } = await supabase
+      .from('recurring_bills')
+      .insert({
+        group_id: data.groupId,
+        name: data.name,
+        amount: data.amount,
+        category_id: data.categoryId || null,
+        payer_id: data.payerId || currentUserId,
+        frequency: data.frequency || 'monthly',
+        due_day: data.dueDay || 1,
+        next_due_date: data.nextDueDate,
+        status: 'active',
+        notes: data.notes || '',
+        created_by: currentUserId,
+      })
+      .select().single()
+    if (error || !bill) return null
+    const mapped = mapBill(bill)
+    set((s) => ({ recurringBills: [...s.recurringBills, mapped] }))
+    await get().logActivity({
+      groupId: mapped.groupId,
+      action: 'bill_created',
+      entityType: 'recurring_bill',
+      entityId: mapped.id,
+      summary: `Created recurring bill "${mapped.name}".`,
+      metadata: { amount: mapped.amount, nextDueDate: mapped.nextDueDate },
+    }).catch(() => {})
+    return mapped
+  },
+
+  updateBill: async (billId, updates) => {
+    const dbUpdates = { updated_at: new Date().toISOString() }
+    if (updates.name !== undefined) dbUpdates.name = updates.name
+    if (updates.amount !== undefined) dbUpdates.amount = updates.amount
+    if (updates.categoryId !== undefined) dbUpdates.category_id = updates.categoryId || null
+    if (updates.payerId !== undefined) dbUpdates.payer_id = updates.payerId
+    if (updates.frequency !== undefined) dbUpdates.frequency = updates.frequency
+    if (updates.dueDay !== undefined) dbUpdates.due_day = updates.dueDay
+    if (updates.nextDueDate !== undefined) dbUpdates.next_due_date = updates.nextDueDate
+    if (updates.status !== undefined) dbUpdates.status = updates.status
+    if (updates.notes !== undefined) dbUpdates.notes = updates.notes
+    const { data: bill, error } = await supabase
+      .from('recurring_bills')
+      .update(dbUpdates)
+      .eq('id', billId)
+      .select().single()
+    if (error || !bill) return null
+    const mapped = mapBill(bill)
+    set((s) => ({ recurringBills: s.recurringBills.map((b) => b.id === billId ? mapped : b) }))
+    return mapped
+  },
+
+  saveBill: async (billId, updates) => {
+    const mapped = await get().updateBill(billId, updates)
+    if (mapped) {
+      await get().logActivity({
+        groupId: mapped.groupId,
+        action: 'bill_updated',
+        entityType: 'recurring_bill',
+        entityId: mapped.id,
+        summary: `Updated recurring bill "${mapped.name}".`,
+      }).catch(() => {})
+    }
+    return mapped
+  },
+
+  markBillPaid: async (billId) => {
+    const bill = get().recurringBills.find((b) => b.id === billId)
+    if (!bill) return null
+    const nextDueDate = advanceDueDate(bill.nextDueDate, bill.frequency, bill.dueDay)
+    const mapped = await get().updateBill(billId, { status: 'paid', nextDueDate })
+    if (mapped) {
+      await get().logActivity({
+        groupId: mapped.groupId,
+        action: 'bill_paid',
+        entityType: 'recurring_bill',
+        entityId: mapped.id,
+        summary: `Marked "${mapped.name}" paid. Next due ${mapped.nextDueDate}.`,
+        metadata: { nextDueDate: mapped.nextDueDate },
+      }).catch(() => {})
+    }
+    return mapped
+  },
+
+  skipBill: async (billId) => {
+    const bill = get().recurringBills.find((b) => b.id === billId)
+    if (!bill) return null
+    const nextDueDate = advanceDueDate(bill.nextDueDate, bill.frequency, bill.dueDay)
+    const mapped = await get().updateBill(billId, { status: 'skipped', nextDueDate })
+    if (mapped) {
+      await get().logActivity({
+        groupId: mapped.groupId,
+        action: 'bill_skipped',
+        entityType: 'recurring_bill',
+        entityId: mapped.id,
+        summary: `Skipped "${mapped.name}" for this cycle. Next due ${mapped.nextDueDate}.`,
+        metadata: { nextDueDate: mapped.nextDueDate },
+      }).catch(() => {})
+    }
+    return mapped
+  },
+
+  deleteBill: async (billId) => {
+    const bill = get().recurringBills.find((b) => b.id === billId)
+    await supabase.from('recurring_bills').delete().eq('id', billId)
+    set((s) => ({ recurringBills: s.recurringBills.filter((b) => b.id !== billId) }))
+    if (bill) {
+      await get().logActivity({
+        groupId: bill.groupId,
+        action: 'bill_deleted',
+        entityType: 'recurring_bill',
+        entityId: bill.id,
+        summary: `Deleted recurring bill "${bill.name}".`,
+      }).catch(() => {})
+    }
+  },
+
   createInvite: async (groupId, email) => {
     const { currentUserId } = get()
     const { data: invite, error } = await supabase
