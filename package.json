@@ -4,24 +4,26 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "test": "node src/utils/bills.test.mjs",
-    "build": "vite build",
-    "preview": "vite preview"
+    "dev": "next dev",
+    "dev:memory-router": "node tools/start-dev-with-memory-router-env.mjs",
+    "test": "node src/utils/bills.test.mjs && node src/utils/source-hygiene.test.mjs && node src/store/useStore.test.mjs",
+    "build": "next build",
+    "start": "next start"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.106.0",
-    "lucide-react": "^0.344.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "@azure/cosmos": "^4.9.3",
+    "bcryptjs": "^3.0.3",
+    "jose": "^6.2.3",
+    "lucide-react": "^1.16.0",
+    "next": "^16.2.6",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
     "recharts": "^2.12.2",
     "zustand": "^4.5.2"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "^10.4.19",
     "postcss": "^8.4.38",
-    "tailwindcss": "^3.4.3",
-    "vite": "^5.2.10"
+    "tailwindcss": "^3.4.3"
   }
 }

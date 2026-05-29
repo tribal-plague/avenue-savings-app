@@ -1,107 +1,8 @@
 import { create } from 'zustand'
-import { supabase } from '../lib/supabase'
-import { advanceDueDate } from '../utils/bills'
+import { avenueApi } from '../lib/avenueApi.js'
+import { advanceDueDate } from '../utils/bills.js'
 
-const genCode = () => 'AVE-' + Math.random().toString(36).slice(2, 6).toUpperCase()
-
-// ─── DB → JS mappers ─────────────────────────────────────────────────────────
-const mapProfile = (p) => ({
-  id: p.id,
-  name: p.name || '',
-  email: p.email || '',
-  salary: p.salary || 0,
-  savingsGoal: p.savings_goal || 20,
-  avatarColor: p.avatar_color || '#7c3aed',
-  avatarEmoji: p.avatar_emoji || '',
-  avatarUrl: p.avatar_url || '',
-  currencySymbol: p.currency_symbol || '$',
-})
-
-const mapGroup = (g, allMembers) => ({
-  id: g.id,
-  name: g.name,
-  type: g.type,
-  inviteCode: g.invite_code,
-  createdBy: g.created_by,
-  createdAt: g.created_at,
-  members: (allMembers || []).filter(m => m.group_id === g.id).map(m => m.user_id),
-  admins: (allMembers || []).filter(m => m.group_id === g.id && m.is_admin).map(m => m.user_id),
-})
-
-const mapCategory = (c) => ({
-  id: c.id,
-  name: c.name,
-  icon: c.icon,
-  color: c.color,
-  budget: c.budget || 0,
-  groupId: c.group_id,
-  createdBy: c.created_by,
-})
-
-const mapExpense = (e) => ({
-  id: e.id,
-  title: e.title,
-  amount: e.amount,
-  date: e.date,
-  notes: e.notes || '',
-  categoryId: e.category_id || null,
-  groupId: e.group_id,
-  paidBy: e.paid_by,
-  splitBetween: e.split_between || [],
-})
-
-const mapInvite = (i) => ({
-  id: i.id,
-  email: i.email,
-  status: i.status,
-  groupId: i.group_id,
-  sentBy: i.sent_by,
-  createdAt: i.created_at,
-})
-
-const mapBill = (b) => ({
-  id: b.id,
-  groupId: b.group_id,
-  name: b.name,
-  amount: Number(b.amount) || 0,
-  categoryId: b.category_id || null,
-  payerId: b.payer_id || null,
-  frequency: b.frequency || 'monthly',
-  dueDay: b.due_day || 1,
-  nextDueDate: b.next_due_date,
-  status: b.status || 'active',
-  notes: b.notes || '',
-  createdBy: b.created_by,
-  createdAt: b.created_at,
-  updatedAt: b.updated_at,
-})
-
-const mapActivity = (a) => ({
-  id: a.id,
-  groupId: a.group_id,
-  actorId: a.actor_id,
-  action: a.action,
-  entityType: a.entity_type,
-  entityId: a.entity_id,
-  summary: a.summary,
-  metadata: a.metadata || {},
-  createdAt: a.created_at,
-})
-
-const DEFAULT_CATEGORIES = [
-  { name: 'Housing',       icon: '🏠', color: '#6366f1', budget: 1500 },
-  { name: 'Food & Dining', icon: '🍔', color: '#f97316', budget: 600  },
-  { name: 'Transport',     icon: '🚗', color: '#0ea5e9', budget: 300  },
-  { name: 'Entertainment', icon: '🎬', color: '#a855f7', budget: 200  },
-  { name: 'Healthcare',    icon: '💊', color: '#10b981', budget: 150  },
-  { name: 'Shopping',      icon: '🛍️', color: '#ec4899', budget: 250  },
-  { name: 'Bills & Utils', icon: '💡', color: '#f59e0b', budget: 200  },
-  { name: 'Personal Care', icon: '✨', color: '#14b8a6', budget: 100  },
-]
-
-// ─── Store ────────────────────────────────────────────────────────────────────
-const useStore = create((set, get) => ({
-  // ── State ──
+const emptySession = {
   currentUserId: null,
   users: {},
   groups: [],
@@ -114,489 +15,350 @@ const useStore = create((set, get) => ({
   currentPage: 'dashboard',
   isAuthenticated: false,
   appView: 'landing',
+  isLoading: false,
+}
+
+const defaultCategories = [
+  { name: 'Housing', icon: 'Home', color: '#2563eb', budget: 1200 },
+  { name: 'Food', icon: 'Utensils', color: '#16a34a', budget: 600 },
+  { name: 'Transport', icon: 'Car', color: '#f97316', budget: 300 },
+  { name: 'Savings', icon: 'PiggyBank', color: '#7c3aed', budget: 500 },
+]
+
+function makeId(prefix) {
+  const random = globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2)
+  return `${prefix}-${random}`
+}
+
+function normalizeUser(user) {
+  const email = String(user?.email || user?.id || '').toLowerCase()
+  return {
+    id: email,
+    email,
+    name: user?.name || user?.display_name || user?.email || 'Avenue User',
+    role: user?.role || 'avenue_user',
+    salary: user?.salary || 0,
+    savingsGoal: user?.savingsGoal || 20,
+    currencySymbol: user?.currencySymbol || '$',
+    avatarUrl: user?.avatarUrl || '',
+    avatarEmoji: user?.avatarEmoji || 'A',
+  }
+}
+
+function storageKey(userId) {
+  return `avenue:finance:${userId}`
+}
+
+function canUseStorage() {
+  return typeof localStorage !== 'undefined'
+}
+
+function createDefaultFinanceState(user) {
+  const groupId = makeId('group')
+  return {
+    currentUserId: user.id,
+    users: { [user.id]: user },
+    groups: [{
+      id: groupId,
+      name: `${user.name.split(' ')[0] || 'My'} Finances`,
+      type: 'individual',
+      inviteCode: `AVE-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
+      members: [user.id],
+      admins: [user.id],
+      createdAt: new Date().toISOString(),
+    }],
+    categories: defaultCategories.map((category) => ({ ...category, id: makeId('category'), groupId })),
+    expenses: [],
+    invites: [],
+    recurringBills: [],
+    activityLog: [],
+    activeGroupId: groupId,
+  }
+}
+
+function loadFinanceState(user) {
+  if (!canUseStorage()) return createDefaultFinanceState(user)
+  const key = storageKey(user.id)
+  const stored = localStorage.getItem(key)
+  if (!stored) {
+    const initial = createDefaultFinanceState(user)
+    localStorage.setItem(key, JSON.stringify(initial))
+    return initial
+  }
+  try {
+    const parsed = JSON.parse(stored)
+    return {
+      ...createDefaultFinanceState(user),
+      ...parsed,
+      currentUserId: user.id,
+      users: { ...(parsed.users || {}), [user.id]: { ...(parsed.users?.[user.id] || {}), ...user } },
+    }
+  } catch {
+    const initial = createDefaultFinanceState(user)
+    localStorage.setItem(key, JSON.stringify(initial))
+    return initial
+  }
+}
+
+function persistFinanceState(state) {
+  if (!canUseStorage() || !state.currentUserId) return
+  const snapshot = {
+    currentUserId: state.currentUserId,
+    users: state.users,
+    groups: state.groups,
+    categories: state.categories,
+    expenses: state.expenses,
+    invites: state.invites,
+    recurringBills: state.recurringBills,
+    activityLog: state.activityLog,
+    activeGroupId: state.activeGroupId,
+  }
+  localStorage.setItem(storageKey(state.currentUserId), JSON.stringify(snapshot))
+}
+
+function commit(set, get, updater) {
+  const current = get()
+  const next = typeof updater === 'function' ? updater(current) : updater
+  const merged = { ...current, ...next }
+  set(next)
+  persistFinanceState(merged)
+  return merged
+}
+
+function applyAuthedState(set, user) {
+  const financeState = loadFinanceState(normalizeUser(user))
+  set({
+    ...financeState,
+    isLoading: false,
+    isAuthenticated: true,
+    appView: 'app',
+  })
+}
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
+const useStore = create((set, get) => ({
+  ...emptySession,
   isLoading: true,
   darkMode: false,
 
-  // ── Navigation ──
   setPage: (page) => set({ currentPage: page }),
   setActiveGroup: (id) => set({ activeGroupId: id }),
   setAppView: (view) => set({ appView: view }),
 
-  // ── Dark mode ──
   toggleDarkMode: () => {
     const next = !get().darkMode
     set({ darkMode: next })
-    document.documentElement.classList.toggle('dark', next)
-    localStorage.setItem('av-dark', next ? '1' : '0')
+    if (typeof document !== 'undefined') document.documentElement.classList.toggle('dark', next)
+    if (canUseStorage()) localStorage.setItem('av-dark', next ? '1' : '0')
   },
   initDarkMode: () => {
-    const saved = localStorage.getItem('av-dark') === '1'
+    const saved = canUseStorage() && localStorage.getItem('av-dark') === '1'
     set({ darkMode: saved })
-    document.documentElement.classList.toggle('dark', saved)
+    if (typeof document !== 'undefined') document.documentElement.classList.toggle('dark', saved)
   },
 
-  // ── Computed selectors (sync, operate on local state) ──
   getGroupCategories: (groupId) => get().categories.filter((c) => c.groupId === groupId),
-  isGroupAdmin: (groupId) => {
-    const { currentUserId, groups } = get()
-    const g = groups.find((g) => g.id === groupId)
-    return g?.admins?.includes(currentUserId) ?? false
-  },
-  getCurrentUser: () => {
-    const { users, currentUserId } = get()
-    return users[currentUserId]
-  },
-  getActiveGroup: () => {
-    const { groups, activeGroupId } = get()
-    return groups.find((g) => g.id === activeGroupId)
-  },
   getGroupExpenses: (groupId) => get().expenses.filter((e) => e.groupId === groupId),
   getGroupBills: (groupId) => get().recurringBills.filter((b) => b.groupId === groupId),
   getGroupActivity: (groupId) => get().activityLog.filter((a) => a.groupId === groupId),
+  getCurrentUser: () => get().users[get().currentUserId],
+  getActiveGroup: () => get().groups.find((g) => g.id === get().activeGroupId),
+  isGroupAdmin: (groupId) => {
+    const group = get().groups.find((g) => g.id === groupId)
+    return group?.admins?.includes(get().currentUserId) ?? false
+  },
 
-  // ── Data loading ──────────────────────────────────────────────────────────
-  loadUserData: async (userId, _depth = 0) => {
+  checkSession: async () => {
     set({ isLoading: true })
     try {
-      // Profile
-      const { data: profile } = await supabase
-        .from('profiles').select('*').eq('id', userId).single()
-
-      // Group memberships for this user
-      const { data: myMemberships } = await supabase
-        .from('group_members').select('group_id').eq('user_id', userId)
-      const groupIds = (myMemberships || []).map(r => r.group_id)
-
-      if (groupIds.length === 0) {
-        if (_depth > 0) {
-          // Setup ran but still no groups — go to app in empty state rather than kicking user out
-          console.error('[avenue] No groups after setup. Check Supabase RLS policies on group_members.')
-          set({
-            currentUserId: userId,
-            users: { [userId]: profile ? mapProfile(profile) : {} },
-            isLoading: false,
-            isAuthenticated: true,
-            appView: 'app',
-            activeGroupId: null,
-          })
-          return
-        }
-        // First login — run account setup
-        const name = profile?.name || 'User'
-        const ok = await get()._setupNewUser(userId, name)
-        if (!ok) {
-          console.error('[avenue] _setupNewUser failed. Check Supabase RLS policies on groups table.')
-        }
-        await get().loadUserData(userId, 1)
+      const result = await avenueApi.session()
+      if (!result.authenticated || !result.user) {
+        set(emptySession)
         return
       }
-
-      // All data in parallel
-      const [
-        { data: groups },
-        { data: allMembers },
-        { data: categories },
-        { data: expenses },
-        { data: invites },
-        { data: recurringBills },
-        { data: activityLog },
-      ] = await Promise.all([
-        supabase.from('groups').select('*').in('id', groupIds),
-        supabase.from('group_members').select('*').in('group_id', groupIds),
-        supabase.from('categories').select('*').in('group_id', groupIds),
-        supabase.from('expenses').select('*').in('group_id', groupIds).order('date', { ascending: false }),
-        supabase.from('invites').select('*').in('group_id', groupIds),
-        supabase.from('recurring_bills').select('*').in('group_id', groupIds).order('next_due_date', { ascending: true }),
-        supabase.from('activity_log').select('*').in('group_id', groupIds).order('created_at', { ascending: false }).limit(80),
-      ])
-
-      // Fetch all member profiles
-      const allUserIds = [...new Set((allMembers || []).map(m => m.user_id))]
-      const { data: profiles } = await supabase
-        .from('profiles').select('*').in('id', allUserIds)
-
-      // Build users map
-      const users = {}
-      ;(profiles || []).forEach(p => { users[p.id] = mapProfile(p) })
-      // Ensure current user email is available (from auth)
-      const { data: { user: authUser } } = await supabase.auth.getUser()
-      if (users[userId] && authUser) users[userId].email = authUser.email || ''
-
-      set({
-        currentUserId: userId,
-        users,
-        groups: (groups || []).map(g => mapGroup(g, allMembers || [])),
-        categories: (categories || []).map(mapCategory),
-        expenses: (expenses || []).map(mapExpense),
-        invites: (invites || []).map(mapInvite),
-        recurringBills: (recurringBills || []).map(mapBill),
-        activityLog: (activityLog || []).map(mapActivity),
-        activeGroupId: groupIds[0],
-        isLoading: false,
-        isAuthenticated: true,
-        appView: 'app',
-      })
-    } catch (err) {
-      console.error('[avenue] loadUserData error:', err?.message || err)
-      // User is authenticated — go to app with empty state rather than kicking them out
-      set({
-        currentUserId: userId,
-        isLoading: false,
-        isAuthenticated: true,
-        appView: 'app',
-      })
+      applyAuthedState(set, result.user)
+    } catch (error) {
+      console.error('[avenue] session check failed:', error?.message || error)
+      set({ ...emptySession, appView: 'config' })
     }
   },
 
-  // ── Auth ──────────────────────────────────────────────────────────────────
+  loadUserData: async () => {
+    await get().checkSession()
+  },
+
   login: async (email, password) => {
     if (!email || !password) return { success: false, message: 'Please fill in all fields.' }
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) {
-      if (error.message?.toLowerCase().includes('email not confirmed'))
-        return { success: false, message: 'Your email isn\'t confirmed yet. Check your inbox and click the link we sent you.' }
-      if (error.message?.toLowerCase().includes('invalid login credentials'))
-        return { success: false, message: 'Incorrect email or password. Please try again.' }
-      return { success: false, message: error.message }
+    try {
+      const result = await avenueApi.login(email, password)
+      applyAuthedState(set, result.user)
+      return { success: true }
+    } catch (error) {
+      return { success: false, message: error.message || 'Incorrect email or password. Please try again.' }
     }
-    await get().loadUserData(data.user.id)
-    return { success: true }
   },
 
   signup: async (name, email, password) => {
     if (!name || !email || !password) return { success: false, message: 'Please fill in all fields.' }
-    const { data, error } = await supabase.auth.signUp({
-      email, password, options: { data: { name } },
-    })
-    if (error) {
-      if (error.message?.toLowerCase().includes('rate limit') || error.message?.toLowerCase().includes('over_email_send_rate_limit'))
-        return { success: false, message: 'Too many signup attempts. Please wait a few minutes before trying again.' }
-      if (error.message?.toLowerCase().includes('already registered') || error.message?.toLowerCase().includes('user already registered'))
-        return { success: false, message: 'An account with this email already exists. Try signing in instead.' }
-      return { success: false, message: error.message }
+    try {
+      const result = await avenueApi.signup(name, email, password)
+      applyAuthedState(set, result.user)
+      return { success: true }
+    } catch (error) {
+      return { success: false, message: error.message || 'Signup failed. Please try again.' }
     }
-    if (!data.user) return { success: false, message: 'Signup failed. Please try again.' }
-
-    // Email confirmation is ON — session is null until they confirm
-    if (!data.session) {
-      return { success: true, needsConfirmation: true }
-    }
-
-    // Email confirmation is OFF — set up account immediately
-    await get()._setupNewUser(data.user.id, name)
-    await get().loadUserData(data.user.id)
-    return { success: true }
-  },
-
-  // Internal: creates default group + categories for a new user
-  _setupNewUser: async (userId, name) => {
-    const { error: profileErr } = await supabase.from('profiles').upsert({
-      id: userId, name, salary: 0, savings_goal: 20,
-      avatar_color: '#7c3aed', currency_symbol: '$',
-    }, { onConflict: 'id' })
-    if (profileErr) console.error('[avenue] profile upsert failed:', profileErr.message)
-
-    // Check if a group already exists (avoid duplicates on retry)
-    const { data: existing } = await supabase
-      .from('group_members').select('group_id').eq('user_id', userId).limit(1)
-    if (existing && existing.length > 0) return true
-
-    const { data: group, error: groupErr } = await supabase
-      .from('groups')
-      .insert({ name: `${name.split(' ')[0]}'s Finances`, type: 'individual', invite_code: genCode(), created_by: userId })
-      .select().single()
-
-    if (groupErr || !group) {
-      console.error('[avenue] group creation failed:', groupErr?.message)
-      return false
-    }
-
-    const { error: memberErr } = await supabase
-      .from('group_members').insert({ group_id: group.id, user_id: userId, is_admin: true })
-    if (memberErr) console.error('[avenue] group_members insert failed:', memberErr.message)
-
-    const { error: catErr } = await supabase.from('categories').insert(
-      DEFAULT_CATEGORIES.map(c => ({ ...c, group_id: group.id, created_by: userId }))
-    )
-    if (catErr) console.error('[avenue] categories insert failed:', catErr.message)
-
-    return true
   },
 
   logout: async () => {
-    await supabase.auth.signOut()
-    set({
-      currentUserId: null, users: {}, groups: [], categories: [],
-      expenses: [], invites: [], recurringBills: [], activityLog: [], activeGroupId: null,
-      currentPage: 'dashboard', isAuthenticated: false, appView: 'landing', isLoading: false,
-    })
+    await avenueApi.logout().catch(() => null)
+    set(emptySession)
   },
 
-  // ── Profile ───────────────────────────────────────────────────────────────
   updateProfile: async (updates) => {
-    const { currentUserId } = get()
-    const dbUpdates = {}
-    if (updates.name !== undefined)           dbUpdates.name = updates.name
-    if (updates.salary !== undefined)         dbUpdates.salary = updates.salary
-    if (updates.savingsGoal !== undefined)    dbUpdates.savings_goal = updates.savingsGoal
-    if (updates.avatarColor !== undefined)    dbUpdates.avatar_color = updates.avatarColor
-    if (updates.avatarEmoji !== undefined)    dbUpdates.avatar_emoji = updates.avatarEmoji
-    if (updates.avatarUrl !== undefined)      dbUpdates.avatar_url = updates.avatarUrl
-    if (updates.currencySymbol !== undefined) dbUpdates.currency_symbol = updates.currencySymbol
-    await supabase.from('profiles').update(dbUpdates).eq('id', currentUserId)
-    set((s) => ({ users: { ...s.users, [currentUserId]: { ...s.users[currentUserId], ...updates } } }))
+    const currentUserId = get().currentUserId
+    commit(set, get, (state) => ({
+      users: {
+        ...state.users,
+        [currentUserId]: { ...state.users[currentUserId], ...updates },
+      },
+    }))
+    return get().users[currentUserId]
   },
 
   uploadAvatar: async (file) => {
-    const { currentUserId } = get()
-    const ext = file.name.split('.').pop()
-    const path = `${currentUserId}/avatar.${ext}`
-    const { error } = await supabase.storage.from('avatars').upload(path, file, { upsert: true })
-    if (error) { console.error('[avenue] avatar upload failed:', error.message); return null }
-    const { data } = supabase.storage.from('avatars').getPublicUrl(path)
-    const url = data.publicUrl + '?t=' + Date.now()
-    await get().updateProfile({ avatarUrl: url, avatarEmoji: '' })
-    return url
+    const avatarUrl = await fileToDataUrl(file)
+    await get().updateProfile({ avatarUrl, avatarEmoji: '' })
+    return avatarUrl
   },
 
-  // ── Groups ────────────────────────────────────────────────────────────────
   createGroup: async (name, type) => {
-    const { currentUserId } = get()
-    const { data: group, error } = await supabase
-      .from('groups')
-      .insert({ name, type, invite_code: genCode(), created_by: currentUserId })
-      .select().single()
-    if (error || !group) return null
-    await supabase.from('group_members').insert({ group_id: group.id, user_id: currentUserId, is_admin: true })
-    const newGroup = mapGroup(group, [{ group_id: group.id, user_id: currentUserId, is_admin: true }])
-    set((s) => ({ groups: [...s.groups, newGroup], activeGroupId: group.id }))
-    return newGroup
-  },
-
-  updateGroup: async (groupId, updates) => {
-    const dbUpdates = {}
-    if (updates.name) dbUpdates.name = updates.name
-    if (updates.type) dbUpdates.type = updates.type
-    await supabase.from('groups').update(dbUpdates).eq('id', groupId)
-    set((s) => ({ groups: s.groups.map((g) => g.id === groupId ? { ...g, ...updates } : g) }))
-  },
-
-  deleteGroup: async (groupId) => {
-    await supabase.from('groups').delete().eq('id', groupId)
-    set((s) => ({
-      groups: s.groups.filter((g) => g.id !== groupId),
-      expenses: s.expenses.filter((e) => e.groupId !== groupId),
-      categories: s.categories.filter((c) => c.groupId !== groupId),
-      recurringBills: s.recurringBills.filter((b) => b.groupId !== groupId),
-      activityLog: s.activityLog.filter((a) => a.groupId !== groupId),
-      activeGroupId: s.activeGroupId === groupId
-        ? (s.groups.find((g) => g.id !== groupId)?.id || null)
-        : s.activeGroupId,
-    }))
-  },
-
-  regenerateInviteCode: async (groupId) => {
-    const newCode = genCode()
-    await supabase.from('groups').update({ invite_code: newCode }).eq('id', groupId)
-    set((s) => ({ groups: s.groups.map((g) => g.id === groupId ? { ...g, inviteCode: newCode } : g) }))
-  },
-
-  joinGroupByCode: async (code) => {
-    const { currentUserId, groups } = get()
-    const { data: group } = await supabase
-      .from('groups').select('*').eq('invite_code', code.trim().toUpperCase()).single()
-    if (!group) return { success: false, message: 'Invalid invite code.' }
-    if (groups.find(g => g.id === group.id)?.members.includes(currentUserId)) {
-      return { success: false, message: 'You are already in this group.' }
+    const userId = get().currentUserId
+    const group = {
+      id: makeId('group'),
+      name,
+      type,
+      inviteCode: `AVE-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
+      members: [userId],
+      admins: [userId],
+      createdAt: new Date().toISOString(),
     }
-    const { error } = await supabase.from('group_members')
-      .insert({ group_id: group.id, user_id: currentUserId, is_admin: false })
-    if (error) return { success: false, message: 'Failed to join group.' }
-    await get().loadUserData(currentUserId)
+    commit(set, get, (state) => ({ groups: [...state.groups, group], activeGroupId: group.id }))
+    return group
+  },
+  updateGroup: async (groupId, updates) => commit(set, get, (state) => ({
+    groups: state.groups.map((group) => group.id === groupId ? { ...group, ...updates } : group),
+  })),
+  deleteGroup: async (groupId) => commit(set, get, (state) => ({
+    groups: state.groups.filter((group) => group.id !== groupId),
+    categories: state.categories.filter((category) => category.groupId !== groupId),
+    expenses: state.expenses.filter((expense) => expense.groupId !== groupId),
+    recurringBills: state.recurringBills.filter((bill) => bill.groupId !== groupId),
+    activeGroupId: state.activeGroupId === groupId ? state.groups.find((group) => group.id !== groupId)?.id || null : state.activeGroupId,
+  })),
+  regenerateInviteCode: async (groupId) => commit(set, get, (state) => ({
+    groups: state.groups.map((group) => group.id === groupId ? { ...group, inviteCode: `AVE-${Math.random().toString(36).slice(2, 8).toUpperCase()}` } : group),
+  })),
+  joinGroupByCode: async (code) => {
+    const match = get().groups.find((group) => group.inviteCode?.toLowerCase() === String(code).toLowerCase())
+    if (!match) return { success: false, message: 'Invite code not found.' }
+    commit(set, get, (state) => ({
+      groups: state.groups.map((group) => group.id === match.id ? { ...group, members: [...new Set([...group.members, state.currentUserId])] } : group),
+      activeGroupId: match.id,
+    }))
     return { success: true }
   },
 
-  // ── Members ───────────────────────────────────────────────────────────────
-  removeMember: async (groupId, userId) => {
-    await supabase.from('group_members').delete().match({ group_id: groupId, user_id: userId })
-    set((s) => ({
-      groups: s.groups.map((g) => g.id !== groupId ? g : {
-        ...g,
-        members: g.members.filter((m) => m !== userId),
-        admins: g.admins.filter((a) => a !== userId),
-      }),
-    }))
-  },
+  removeMember: async (groupId, userId) => commit(set, get, (state) => ({
+    groups: state.groups.map((group) => group.id === groupId ? {
+      ...group,
+      members: group.members.filter((id) => id !== userId),
+      admins: group.admins.filter((id) => id !== userId),
+    } : group),
+  })),
+  toggleAdmin: async (groupId, userId) => commit(set, get, (state) => ({
+    groups: state.groups.map((group) => {
+      if (group.id !== groupId) return group
+      const isAdmin = group.admins.includes(userId)
+      return { ...group, admins: isAdmin ? group.admins.filter((id) => id !== userId) : [...group.admins, userId] }
+    }),
+  })),
 
-  toggleAdmin: async (groupId, userId) => {
-    const { groups } = get()
-    const group = groups.find(g => g.id === groupId)
-    const isAdmin = group?.admins.includes(userId) || false
-    await supabase.from('group_members')
-      .update({ is_admin: !isAdmin }).match({ group_id: groupId, user_id: userId })
-    set((s) => ({
-      groups: s.groups.map((g) => g.id !== groupId ? g : {
-        ...g,
-        admins: isAdmin ? g.admins.filter(a => a !== userId) : [...g.admins, userId],
-      }),
-    }))
-  },
-
-  // ── Categories ────────────────────────────────────────────────────────────
   addCategory: async (data) => {
-    const { currentUserId } = get()
-    const { data: cat, error } = await supabase
-      .from('categories')
-      .insert({ group_id: data.groupId, created_by: currentUserId, name: data.name, icon: data.icon, color: data.color, budget: data.budget || 0 })
-      .select().single()
-    if (error || !cat) return
-    set((s) => ({ categories: [...s.categories, mapCategory(cat)] }))
+    const category = { id: makeId('category'), ...data }
+    commit(set, get, (state) => ({ categories: [...state.categories, category] }))
+    return category
   },
+  updateCategory: async (categoryId, updates) => commit(set, get, (state) => ({
+    categories: state.categories.map((category) => category.id === categoryId ? { ...category, ...updates } : category),
+  })),
+  deleteCategory: async (categoryId) => commit(set, get, (state) => ({
+    categories: state.categories.filter((category) => category.id !== categoryId),
+    expenses: state.expenses.map((expense) => expense.categoryId === categoryId ? { ...expense, categoryId: null } : expense),
+  })),
 
-  updateCategory: async (categoryId, updates) => {
-    const dbUpdates = {}
-    if (updates.name !== undefined)   dbUpdates.name = updates.name
-    if (updates.icon !== undefined)   dbUpdates.icon = updates.icon
-    if (updates.color !== undefined)  dbUpdates.color = updates.color
-    if (updates.budget !== undefined) dbUpdates.budget = updates.budget
-    await supabase.from('categories').update(dbUpdates).eq('id', categoryId)
-    set((s) => ({ categories: s.categories.map((c) => c.id === categoryId ? { ...c, ...updates } : c) }))
-  },
-
-  deleteCategory: async (categoryId) => {
-    await supabase.from('categories').delete().eq('id', categoryId)
-    set((s) => ({
-      categories: s.categories.filter((c) => c.id !== categoryId),
-      expenses: s.expenses.map((e) => e.categoryId === categoryId ? { ...e, categoryId: null } : e),
-    }))
-  },
-
-  // ── Expenses ──────────────────────────────────────────────────────────────
   addExpense: async (data) => {
-    const { currentUserId } = get()
-    const { data: exp, error } = await supabase
-      .from('expenses')
-      .insert({
-        group_id: data.groupId,
-        category_id: data.categoryId || null,
-        paid_by: data.paidBy || currentUserId,
-        title: data.title,
-        amount: data.amount,
-        date: data.date,
-        notes: data.notes || '',
-        split_between: data.splitBetween || [data.paidBy || currentUserId],
-      })
-      .select().single()
-    if (error || !exp) return
-    set((s) => ({ expenses: [mapExpense(exp), ...s.expenses] }))
+    const expense = { id: makeId('expense'), date: new Date().toISOString().slice(0, 10), paidBy: get().currentUserId, ...data }
+    commit(set, get, (state) => ({ expenses: [expense, ...state.expenses] }))
+    return expense
   },
+  updateExpense: async (expenseId, updates) => commit(set, get, (state) => ({
+    expenses: state.expenses.map((expense) => expense.id === expenseId ? { ...expense, ...updates } : expense),
+  })),
+  deleteExpense: async (expenseId) => commit(set, get, (state) => ({
+    expenses: state.expenses.filter((expense) => expense.id !== expenseId),
+  })),
 
-  updateExpense: async (expenseId, updates) => {
-    const dbUpdates = {}
-    if (updates.title !== undefined)        dbUpdates.title = updates.title
-    if (updates.amount !== undefined)       dbUpdates.amount = updates.amount
-    if (updates.date !== undefined)         dbUpdates.date = updates.date
-    if (updates.notes !== undefined)        dbUpdates.notes = updates.notes
-    if (updates.categoryId !== undefined)   dbUpdates.category_id = updates.categoryId
-    if (updates.paidBy !== undefined)       dbUpdates.paid_by = updates.paidBy
-    if (updates.splitBetween !== undefined) dbUpdates.split_between = updates.splitBetween
-    await supabase.from('expenses').update(dbUpdates).eq('id', expenseId)
-    set((s) => ({ expenses: s.expenses.map((e) => e.id === expenseId ? { ...e, ...updates } : e) }))
-  },
-
-  deleteExpense: async (expenseId) => {
-    await supabase.from('expenses').delete().eq('id', expenseId)
-    set((s) => ({ expenses: s.expenses.filter((e) => e.id !== expenseId) }))
-  },
-
-  // ── Invites ───────────────────────────────────────────────────────────────
-  logActivity: async ({ groupId, action, entityType, entityId, summary, metadata = {} }) => {
-    const { currentUserId } = get()
-    const { data } = await supabase
-      .from('activity_log')
-      .insert({
-        group_id: groupId,
-        actor_id: currentUserId,
-        action,
-        entity_type: entityType,
-        entity_id: entityId || null,
-        summary,
-        metadata,
-      })
-      .select().single()
-    if (data) set((s) => ({ activityLog: [mapActivity(data), ...s.activityLog].slice(0, 80) }))
+  logActivity: async (payload) => {
+    const activity = { id: makeId('activity'), ...payload, actorId: get().currentUserId, createdAt: new Date().toISOString() }
+    commit(set, get, (state) => ({ activityLog: [activity, ...state.activityLog].slice(0, 200) }))
+    return activity
   },
 
   addBill: async (data) => {
-    const { currentUserId } = get()
-    const { data: bill, error } = await supabase
-      .from('recurring_bills')
-      .insert({
-        group_id: data.groupId,
-        name: data.name,
-        amount: data.amount,
-        category_id: data.categoryId || null,
-        payer_id: data.payerId || currentUserId,
-        frequency: data.frequency || 'monthly',
-        due_day: data.dueDay || 1,
-        next_due_date: data.nextDueDate,
-        status: 'active',
-        notes: data.notes || '',
-        created_by: currentUserId,
-      })
-      .select().single()
-    if (error || !bill) return null
-    const mapped = mapBill(bill)
-    set((s) => ({ recurringBills: [...s.recurringBills, mapped] }))
+    const bill = { id: makeId('bill'), status: 'active', ...data }
+    commit(set, get, (state) => ({ recurringBills: [...state.recurringBills, bill] }))
     await get().logActivity({
-      groupId: mapped.groupId,
+      groupId: bill.groupId,
       action: 'bill_created',
       entityType: 'recurring_bill',
-      entityId: mapped.id,
-      summary: `Created recurring bill "${mapped.name}".`,
-      metadata: { amount: mapped.amount, nextDueDate: mapped.nextDueDate },
+      entityId: bill.id,
+      summary: `Created recurring bill "${bill.name}".`,
+      metadata: { amount: bill.amount, nextDueDate: bill.nextDueDate },
     }).catch(() => {})
-    return mapped
+    return bill
   },
 
   updateBill: async (billId, updates) => {
-    const dbUpdates = { updated_at: new Date().toISOString() }
-    if (updates.name !== undefined) dbUpdates.name = updates.name
-    if (updates.amount !== undefined) dbUpdates.amount = updates.amount
-    if (updates.categoryId !== undefined) dbUpdates.category_id = updates.categoryId || null
-    if (updates.payerId !== undefined) dbUpdates.payer_id = updates.payerId
-    if (updates.frequency !== undefined) dbUpdates.frequency = updates.frequency
-    if (updates.dueDay !== undefined) dbUpdates.due_day = updates.dueDay
-    if (updates.nextDueDate !== undefined) dbUpdates.next_due_date = updates.nextDueDate
-    if (updates.status !== undefined) dbUpdates.status = updates.status
-    if (updates.notes !== undefined) dbUpdates.notes = updates.notes
-    const { data: bill, error } = await supabase
-      .from('recurring_bills')
-      .update(dbUpdates)
-      .eq('id', billId)
-      .select().single()
-    if (error || !bill) return null
-    const mapped = mapBill(bill)
-    set((s) => ({ recurringBills: s.recurringBills.map((b) => b.id === billId ? mapped : b) }))
-    return mapped
+    commit(set, get, (state) => ({
+      recurringBills: state.recurringBills.map((bill) => bill.id === billId ? { ...bill, ...updates } : bill),
+    }))
+    return get().recurringBills.find((bill) => bill.id === billId) || null
   },
 
   saveBill: async (billId, updates) => {
-    const mapped = await get().updateBill(billId, updates)
-    if (mapped) {
+    const bill = await get().updateBill(billId, updates)
+    if (bill) {
       await get().logActivity({
-        groupId: mapped.groupId,
+        groupId: bill.groupId,
         action: 'bill_updated',
         entityType: 'recurring_bill',
-        entityId: mapped.id,
-        summary: `Updated recurring bill "${mapped.name}".`,
+        entityId: bill.id,
+        summary: `Updated recurring bill "${bill.name}".`,
       }).catch(() => {})
     }
-    return mapped
+    return bill
   },
 
   markBillPaid: async (billId) => {
-    const bill = get().recurringBills.find((b) => b.id === billId)
+    const bill = get().recurringBills.find((item) => item.id === billId)
     if (!bill) return null
     const nextDueDate = advanceDueDate(bill.nextDueDate, bill.frequency, bill.dueDay)
     const mapped = await get().updateBill(billId, { status: 'paid', nextDueDate })
@@ -614,7 +376,7 @@ const useStore = create((set, get) => ({
   },
 
   skipBill: async (billId) => {
-    const bill = get().recurringBills.find((b) => b.id === billId)
+    const bill = get().recurringBills.find((item) => item.id === billId)
     if (!bill) return null
     const nextDueDate = advanceDueDate(bill.nextDueDate, bill.frequency, bill.dueDay)
     const mapped = await get().updateBill(billId, { status: 'skipped', nextDueDate })
@@ -632,9 +394,8 @@ const useStore = create((set, get) => ({
   },
 
   deleteBill: async (billId) => {
-    const bill = get().recurringBills.find((b) => b.id === billId)
-    await supabase.from('recurring_bills').delete().eq('id', billId)
-    set((s) => ({ recurringBills: s.recurringBills.filter((b) => b.id !== billId) }))
+    const bill = get().recurringBills.find((item) => item.id === billId)
+    commit(set, get, (state) => ({ recurringBills: state.recurringBills.filter((item) => item.id !== billId) }))
     if (bill) {
       await get().logActivity({
         groupId: bill.groupId,
@@ -647,20 +408,13 @@ const useStore = create((set, get) => ({
   },
 
   createInvite: async (groupId, email) => {
-    const { currentUserId } = get()
-    const { data: invite, error } = await supabase
-      .from('invites')
-      .insert({ group_id: groupId, email, sent_by: currentUserId, status: 'pending' })
-      .select().single()
-    if (error || !invite) return
-    set((s) => ({ invites: [...s.invites, mapInvite(invite)] }))
-    return mapInvite(invite)
+    const invite = { id: makeId('invite'), groupId, email, status: 'pending', createdAt: new Date().toISOString() }
+    commit(set, get, (state) => ({ invites: [invite, ...state.invites] }))
+    return invite
   },
-
-  revokeInvite: async (inviteId) => {
-    await supabase.from('invites').delete().eq('id', inviteId)
-    set((s) => ({ invites: s.invites.filter((i) => i.id !== inviteId) }))
-  },
+  revokeInvite: async (inviteId) => commit(set, get, (state) => ({
+    invites: state.invites.filter((invite) => invite.id !== inviteId),
+  })),
 }))
 
 export default useStore
